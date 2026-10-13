@@ -1,0 +1,18 @@
+# Secrets — never commit
+.env
+*service-account*.json
+gcp-*.json
+
+# Runtime data (SQLite, recordings) — any data/ folder, at any depth
+data/
+*.db
+*.db-*
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+*.log

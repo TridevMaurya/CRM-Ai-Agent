@@ -1,0 +1,53 @@
+# Fly.io — Singapore (closest region to Exotel's Mumbai media servers that Fly offers
+# without a dedicated plan). One live call per machine; Fly spreads calls across
+# machines. SQLite lives on the mounted volume.
+app = "gyan-tv-crm-glapp8"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PUBLIC_BASE_URL = "https://gyan-tv-crm-glapp8.fly.dev"
+  # User activity sheet (analyst's BigQuery export: tabs "video watched" and
+  # "trail and subscription cancelled"). Shared with the service account.
+  USER_SHEET = "1MNFYqHe3Z_0WqOYaSHnHIxMYhgG3ZDCmQLnb1S-jd8w"
+  # Content sheet: "GyanTV-Master Sheet (all)", tab "All Videos" (Content ID,
+  # Video-Title, Category). Needs Viewer access for the service account.
+  CONTENT_SHEET = "1cyowEl1Zi-v01hlYFEdpWMHHuNJxztFsTobPLqBGQUo"
+  CONTENT_SHEET_TAB = "All Videos"
+  SYNC_EVERY_MINS = "5"
+  STT_MODEL = "saaras:v3"      # pipecat 1.1.0 rejects saaras:v4 (allowed: v2.5, v3); v4 needs a pipecat bump
+  CALL_WINDOW = "10:00-21:00"  # IST; changeable live via POST /api/campaign/dialer {"window": ...}
+  # Exotel voicebot handled 5 concurrent streams in the 25 Sep test; the dialer stays under that.
+  MAX_CONCURRENT_CALLS = "5"
+  DIAL_GAP_SECS = "1.5"        # stagger between consecutive dials
+  MAX_RINGING = "5"            # ringing beyond the 5 talking (≈32% pickup → need ~5 ringing to keep 5 talking)
+  NO_ANSWER_AFTER_SECS = "60"  # ringing ~45 s; free the channel after that
+  DIAL_LANGUAGES = "hin"       # Hindi only for now
+  # Priority: trial-cancelled (content feedback + why) first, then the content
+  # research cohorts. Subscription-cancelled parked for now.
+  DIAL_COHORTS = "TRIAL_CANCELLED"                       # daytime: trial-cancelled only
+  DIAL_COHORTS_NIGHT = "DAU_10PLUS,LIGHT_3_4,TRIAL_CANCELLED"   # from NIGHT_FROM: content research first
+  NIGHT_FROM = "19:00"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 10
+    hard_limit = 16
+
+[[mounts]]
+  source = "crm_data"
+  destination = "/app/data"
+
+[[vm]]
+  # 5 concurrent calls starved a shared-cpu-1x (greeting 15-34 s late, choppy audio).
+  size = "shared-cpu-4x"
+  memory = "2gb"

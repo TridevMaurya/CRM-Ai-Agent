@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genie Admin</title>
+  <link rel="stylesheet" href="/static/style.css?v=a356ec9d">
+  <style>
+    [hidden] { display: none !important; }
+    .tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .tabs button.active { background: var(--accent); }
+    .tabs button:not(.active) { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .group h3 { font-size: 0.85rem; margin: 0 0 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.9rem; }
+    .field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; color: var(--muted); }
+    .field.wide { grid-column: 1 / -1; }
+    .field .top { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
+    .field .changed { color: var(--warn); font-size: 0.7rem; }
+    .field .yaml { font-size: 0.7rem; }
+    .field textarea { min-height: 220px; font-family: ui-monospace, Menlo, monospace; font-size: 0.8rem; line-height: 1.45; }
+    .field input[type=checkbox] { width: 1.1rem; height: 1.1rem; align-self: flex-start; }
+    .help { font-size: 0.72rem; color: var(--muted); }
+    .bar { position: sticky; bottom: 0; background: var(--card); border-top: 1px solid var(--border); padding: 0.8rem 1.25rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    #login { max-width: 360px; margin: 4rem auto; }
+    audio { height: 34px; }
+    @media (max-width: 600px) { main { padding: 1rem; } .fields { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Genie — Admin</h1>
+    <nav><a href="/">← Dashboard</a> <a href="#" id="logout" hidden>Log out</a></nav>
+  </header>
+
+  <section id="login" hidden>
+    <h2>Admin login</h2>
+    <form id="login-form" class="row">
+      <label>Password <input id="pw" type="password" autocomplete="current-password" required></label>
+      <button>Log in</button>
+    </form>
+    <div id="login-err" class="hint err"></div>
+  </section>
+
+  <main id="app" hidden>
+    <section>
+      <div class="tabs" id="tabs"></div>
+      <div class="hint" id="agent-info"></div>
+    </section>
+    <div id="groups" style="display:flex;flex-direction:column;gap:1.25rem"></div>
+    <section>
+      <h2>Voice preview</h2>
+      <div class="row">
+        <label style="flex:3">Text (blank = sample line in the agent's language)
+          <input id="pv-text" placeholder="नमस्ते, मैं Gyan TV से Genie बोल रही हूँ…"></label>
+        <button id="pv-btn" class="ghost">▶ Preview with current settings</button>
+        <audio id="pv-audio" controls hidden></audio>
+      </div>
+      <div class="hint">Uses the engine / voice / style / speed / language chosen above (saved or not).</div>
+    </section>
+  </main>
+  <div class="bar" id="bar" hidden>
+    <button id="save">Save — applies from the next call</button>
+    <button id="reset" class="ghost">Reset this agent to YAML defaults</button>
+    <span id="status" class="hint" style="margin:0"></span>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    function toast(msg, isError = false) {
+      const el = $('#toast'); el.textContent = msg; el.classList.toggle('error', isError);
+      el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 3000);
+    }
+    async function api(method, url, body) {
+      const r = await fetch(url, { method, headers: body ? {'Content-Type': 'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
+      if (r.status === 401) { showLogin(); throw new Error('login required'); }
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || r.statusText);
+      return data;
+    }
+
+    let agents = [], current = null, dirty = {};
+
+    function showLogin() { $('#login').hidden = false; $('#app').hidden = true; $('#bar').hidden = true; $('#logout').hidden = true; }
+    function showApp() { $('#login').hidden = true; $('#app').hidden = false; $('#bar').hidden = false; $('#logout').hidden = false; }
+
+    $('#login-form').onsubmit = async (e) => {
+      e.preventDefault();
+      try { await api('POST', '/api/admin/login', { password: $('#pw').value }); $('#pw').value = ''; $('#login-err').textContent = ''; await load(); }
+      catch (err) { $('#login-err').textContent = err.message; }
+    };
+    $('#logout').onclick = async (e) => { e.preventDefault(); await api('POST', '/api/admin/logout'); showLogin(); };
+
+    async function load(keepId) {
+      agents = await api('GET', '/api/admin/agents');
+      showApp();
+      const id = keepId || (current && current.id) || agents[0].id;
+      select(agents.find(a => a.id === id) || agents[0]);
+    }
+
+    function select(agent) {
+      if (Object.keys(dirty).length && current && current.id !== agent.id && !confirm('Discard unsaved changes?')) return;
+      current = agent; dirty = {};
+      $('#tabs').innerHTML = agents.map(a => `<button class="small ${a.id === agent.id ? 'active' : ''}" data-id="${esc(a.id)}">${esc(a.name)}</button>`).join('');
+      document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => select(agents.find(a => a.id === b.dataset.id)));
+      const n = Object.keys(flatten(agent.overrides)).length;
+      $('#agent-info').innerHTML = `<code>agents/${esc(agent.file)}</code> · cohorts: <b>${esc(agent.cohorts.join(', ') || '—')}</b> · ${n ? `<b>${n}</b> setting(s) changed from the YAML` : 'all settings = YAML'}`;
+      render();
+      setStatus('');
+    }
+
+    function flatten(obj, prefix = '') {
+      const out = {};
+      for (const [k, v] of Object.entries(obj || {})) {
+        const key = prefix ? `${prefix}.${k}` : k;
+        if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flatten(v, key)); else out[key] = v;
+      }
+      return out;
+    }
+
+    function value(path) { return path in dirty ? dirty[path] : current.values[path]; }
+
+    function input(path, spec, v) {
+      const id = `f-${path.replace(/\./g, '_')}`;
+      if (spec.type === 'bool') return `<input id="${id}" data-path="${path}" type="checkbox" ${v ? 'checked' : ''}>`;
+      if (spec.type === 'enum') return `<select id="${id}" data-path="${path}">${spec.options.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+      if (spec.type === 'text') return `<textarea id="${id}" data-path="${path}" spellcheck="false">${esc(v)}</textarea>`;
+      if (spec.type === 'int' || spec.type === 'float')
+        return `<input id="${id}" data-path="${path}" type="number" step="${spec.type === 'int' ? 1 : 0.1}" min="${spec.min}" max="${spec.max}" value="${esc(v)}">`;
+      return `<input id="${id}" data-path="${path}" value="${esc(v)}">`;
+    }
+
+    function render() {
+      const groups = {};
+      for (const [path, spec] of Object.entries(current.schema)) (groups[spec.group] ??= []).push([path, spec]);
+      const overridden = flatten(current.overrides);
+      $('#groups').innerHTML = Object.entries(groups).map(([g, fields]) => `
+        <section class="group"><h3>${esc(g)}</h3><div class="fields">
+          ${fields.map(([path, spec]) => {
+            const v = value(path), y = current.yaml[path];
+            const changed = path in overridden;
+            const yamlNote = changed && spec.type !== 'text' ? `<span class="yaml">YAML: ${esc(y)}</span>` : '';
+            return `<div class="field ${spec.type === 'text' ? 'wide' : ''}">
+              <div class="top"><span>${esc(spec.label)}</span>${changed ? '<span class="changed">● changed</span>' : ''}</div>
+              ${input(path, spec, v)}
+              ${spec.help ? `<span class="help">${esc(spec.help)}</span>` : ''}${yamlNote}
+            </div>`;
+          }).join('')}
+        </div></section>`).join('');
+      document.querySelectorAll('[data-path]').forEach(el => {
+        el.oninput = el.onchange = () => {
+          const spec = current.schema[el.dataset.path];
+          dirty[el.dataset.path] = spec.type === 'bool' ? el.checked
+            : spec.type === 'int' ? parseInt(el.value, 10) : spec.type === 'float' ? parseFloat(el.value) : el.value;
+          setStatus(`${Object.keys(dirty).length} unsaved change(s)`);
+        };
+      });
+    }
+
+    function setStatus(t) { $('#status').textContent = t; }
+
+    $('#save').onclick = async () => {
+      if (!Object.keys(dirty).length) { toast('Nothing changed'); return; }
+      try {
+        await api('PUT', `/api/admin/agents/${current.id}`, { values: dirty });
+        dirty = {}; toast('Saved — the next call uses it'); await load(current.id);
+      } catch (e) { toast(e.message, true); }
+    };
+    $('#reset').onclick = async () => {
+      if (!confirm(`Reset ${current.name} to the YAML defaults? All admin changes for this agent are removed.`)) return;
+      try { await api('DELETE', `/api/admin/agents/${current.id}`); dirty = {}; toast('Reset to YAML'); await load(current.id); }
+      catch (e) { toast(e.message, true); }
+    };
+
+    $('#pv-btn').onclick = async () => {
+      const btn = $('#pv-btn'); btn.disabled = true; btn.textContent = 'Generating…';
+      try {
+        const r = await fetch('/api/admin/preview', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({
+          provider: value('tts.provider'), voice: value('voice'), style: value('tts.style') || '',
+          voice_id: value('tts.voice_id') || '', model: value('tts.model') || '',
+          speed: value('speed') || 1, language: value('language'), text: $('#pv-text').value.trim() }) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+        const a = $('#pv-audio'); a.src = URL.createObjectURL(await r.blob()); a.hidden = false; a.play();
+      } catch (e) { toast(e.message, true); }
+      btn.disabled = false; btn.textContent = '▶ Preview with current settings';
+    };
+
+    window.onbeforeunload = () => Object.keys(dirty).length ? true : undefined;
+    load().catch(e => { if (e.message !== 'login required') toast(e.message, true); });
+  </script>
+</body>
+</html>

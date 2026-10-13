@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test call — Gyan TV CRM</title>
+  <link rel="stylesheet" href="/static/style.css?v=a356ec9d">
+  <style>
+    .captions { min-height: 220px; max-height: 420px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Test call</h1>
+    <nav><a href="/">← Dashboard</a></nav>
+  </header>
+  <main>
+    <section>
+      <h2>Context for this call</h2>
+      <div class="row">
+        <label>Language
+          <select id="p-language">
+            <option value="">agent default</option>
+            <option value="hin">Hindi</option><option value="tel">Telugu</option>
+            <option value="tam">Tamil</option><option value="kan">Kannada</option>
+            <option value="eng">English</option>
+          </select>
+        </label>
+        <label>User name <input id="p-user_name" placeholder="Rahul"></label>
+        <label>Video title <input id="p-video_title" placeholder="Bangalore horror story"></label>
+        <label>Plan name <input id="p-plan_name" placeholder="Gyan TV Premium"></label>
+      </div>
+      <div class="hint">Same pipeline as the phone call (Sarvam STT → Gemini → Chirp3-HD), only the
+        transport differs. Use headphones — Genie's voice bleeding into the mic is ignored while she
+        speaks, but a quiet room gives a truer test.</div>
+    </section>
+    <section>
+      <h2>Call</h2>
+      <div class="row">
+        <button id="start">Start call</button>
+        <button id="end" class="danger" disabled>End call</button>
+        <span id="status" class="status"><span class="dot"></span><span id="status-text">Idle</span></span>
+        <span id="call-link" class="hint" style="margin:0"></span>
+      </div>
+      <div id="captions" class="transcript captions" style="margin-top:1rem"></div>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
+  <script>
+    // Mirrors pipecat/frames/frames.proto (only the messages we use).
+    const PROTO = `
+      syntax = "proto3"; package pipecat;
+      message TextFrame { uint64 id = 1; string name = 2; string text = 3; }
+      message AudioRawFrame { uint64 id = 1; string name = 2; bytes audio = 3; uint32 sample_rate = 4; uint32 num_channels = 5; optional uint64 pts = 6; }
+      message TranscriptionFrame { uint64 id = 1; string name = 2; string text = 3; string user_id = 4; string timestamp = 5; }
+      message MessageFrame { string data = 1; }
+      message Frame { oneof frame { TextFrame text = 1; AudioRawFrame audio = 2; TranscriptionFrame transcription = 3; MessageFrame message = 4; } }`;
+    const FrameType = protobuf.parse(PROTO).root.lookupType('pipecat.Frame');
+
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const agentId = location.pathname.split('/').pop();
+    $('#title').textContent = `Test call — ${agentId}`;
+    const TARGET_RATE = 16000, JITTER_S = 0.25;
+    let ws = null, audioCtx = null, micStream = null, micSource = null, micProcessor = null, nextPlayTime = 0;
+
+    function toast(msg, isError = false) {
+      const el = $('#toast'); el.textContent = msg; el.classList.toggle('error', isError);
+      el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 3000);
+    }
+    function setStatus(state, text) {
+      const s = $('#status'); s.classList.remove('connecting', 'connected', 'error');
+      if (state) s.classList.add(state); $('#status-text').textContent = text;
+    }
+    function addTurn(role, text) {
+      const d = document.createElement('div'); d.className = 'turn ' + role;
+      d.innerHTML = `<span class="who">${role === 'bot' ? 'Genie' : 'You'}</span>${esc(text)}`;
+      $('#captions').appendChild(d); $('#captions').scrollTop = 1e9;
+    }
+
+    // ---- mic → 16 kHz int16 → protobuf frames ----
+    async function startMic() {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 16000 } });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      const inputRate = audioCtx.sampleRate;
+      micSource = audioCtx.createMediaStreamSource(micStream);
+      const gain = audioCtx.createGain(); gain.gain.value = 2.0;
+      micProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
+      micProcessor.onaudioprocess = (e) => sendAudio(floatToInt16(downsample(e.inputBuffer.getChannelData(0), inputRate, TARGET_RATE)));
+      micSource.connect(gain); gain.connect(micProcessor); micProcessor.connect(audioCtx.destination);
+    }
+    function stopMic() {
+      try { micProcessor && micProcessor.disconnect(); } catch (_) {}
+      try { micSource && micSource.disconnect(); } catch (_) {}
+      try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+      try { audioCtx && audioCtx.close(); } catch (_) {}
+      micProcessor = micSource = micStream = audioCtx = null; nextPlayTime = 0;
+    }
+    function downsample(input, from, to) {
+      if (from <= to) return input;
+      const ratio = from / to, outLen = Math.floor(input.length / ratio), out = new Float32Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const s = Math.floor(i * ratio), e = Math.min(input.length, Math.floor((i + 1) * ratio));
+        let sum = 0; for (let j = s; j < e; j++) sum += input[j]; out[i] = e > s ? sum / (e - s) : 0;
+      }
+      return out;
+    }
+    function floatToInt16(f) {
+      const out = new Int16Array(f.length);
+      for (let i = 0; i < f.length; i++) { const s = Math.max(-1, Math.min(1, f[i])); out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
+      return out;
+    }
+    function sendAudio(int16) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const bytes = new Uint8Array(int16.buffer, int16.byteOffset, int16.byteLength);
+      ws.send(FrameType.encode(FrameType.create({ audio: { id: 0, name: '', audio: bytes, sampleRate: TARGET_RATE, numChannels: 1 } })).finish());
+    }
+
+    // ---- speaker: int16 PCM frames → gapless playback with a jitter cushion ----
+    function playPCM(bytes, sampleRate) {
+      if (!audioCtx) return;
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), n = bytes.byteLength / 2;
+      const f = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const s = view.getInt16(i * 2, true); f[i] = s / (s < 0 ? 0x8000 : 0x7FFF); }
+      const buf = audioCtx.createBuffer(1, n, sampleRate); buf.getChannelData(0).set(f);
+      const src = audioCtx.createBufferSource(); src.buffer = buf; src.connect(audioCtx.destination);
+      if (nextPlayTime < audioCtx.currentTime + 0.02) nextPlayTime = audioCtx.currentTime + JITTER_S;
+      src.start(nextPlayTime); nextPlayTime += buf.duration;
+    }
+
+    async function onMessage(ev) {
+      if (typeof ev.data === 'string') {
+        try { const m = JSON.parse(ev.data); if (m.type === 'user' || m.type === 'bot') addTurn(m.type, m.text); } catch (_) {}
+        return;
+      }
+      const buf = ev.data instanceof Blob ? new Uint8Array(await ev.data.arrayBuffer()) : new Uint8Array(ev.data);
+      let frame; try { frame = FrameType.decode(buf); } catch (_) { return; }
+      if (frame.audio && frame.audio.audio && frame.audio.audio.length) playPCM(frame.audio.audio, frame.audio.sampleRate || 24000);
+    }
+
+    async function startCall() {
+      const params = {};
+      for (const k of ['language', 'user_name', 'video_title', 'plan_name']) { const v = $('#p-' + k).value.trim(); if (v) params[k] = v; }
+      setStatus('connecting', 'Connecting…'); $('#start').disabled = true; $('#captions').innerHTML = '';
+      try { await startMic(); } catch (e) { setStatus('error', 'Mic: ' + e.message); $('#start').disabled = false; return; }
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/browser/${agentId}`);
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = () => { ws.send(JSON.stringify({ params })); setStatus('connected', 'Connected — Genie will greet you'); $('#end').disabled = false; };
+      ws.onmessage = onMessage;
+      ws.onerror = () => setStatus('error', 'WebSocket error');
+      ws.onclose = (e) => { setStatus(null, 'Call ended' + (e.reason ? ' — ' + e.reason : '')); cleanup();
+        $('#call-link').innerHTML = 'Transcript + analysis: <a href="/">dashboard</a>'; };
+    }
+    function endCall() { if (ws && ws.readyState === WebSocket.OPEN) ws.close(1000, 'ended by tester'); else cleanup(); }
+    function cleanup() { stopMic(); ws = null; $('#start').disabled = false; $('#end').disabled = true; }
+    $('#start').onclick = startCall; $('#end').onclick = endCall;
+  </script>
+</body>
+</html>

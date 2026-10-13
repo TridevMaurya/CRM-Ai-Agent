@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Call — Gyan TV CRM</title>
+  <link rel="stylesheet" href="/static/style.css?v=a356ec9d">
+</head>
+<body>
+  <header>
+    <h1 id="title">Call</h1>
+    <nav><a href="/">← Dashboard</a></nav>
+  </header>
+  <main>
+    <section>
+      <h2>Details</h2>
+      <dl id="details" class="kv"></dl>
+    </section>
+    <section id="rec-section" hidden>
+      <h2>Recording</h2>
+      <audio id="rec" controls preload="none" style="width:100%;max-width:640px"></audio>
+      <div id="rec-note" class="hint"></div>
+    </section>
+    <section>
+      <h2>Analysis</h2>
+      <dl id="analysis" class="kv"><dd class="hint">Runs automatically when the call ends.</dd></dl>
+    </section>
+    <section>
+      <h2>Transcript <span id="live" class="pill live" hidden>live</span></h2>
+      <div id="transcript" class="transcript"></div>
+    </section>
+  </main>
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const id = location.pathname.split('/').pop();
+    const fmtDur = (s) => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    const show = (v) => Array.isArray(v) ? (v.length ? v.join('; ') : '—') : (v === true ? 'yes' : v === false ? 'no' : (v ?? '—'));
+
+    async function load() {
+      const r = await fetch('/api/calls/' + id);
+      if (!r.ok) { $('#details').innerHTML = '<dd class="err">Call not found</dd>'; return; }
+      const c = await r.json();
+      $('#title').textContent = `${c.agent_id} · ${c.from_number || c.transport} · ${new Date(c.started_at * 1000).toLocaleString('en-IN')}`;
+      const cost = c.cost_detail || {};
+      const rows = [
+        ['Status', `<span class="pill ${esc(c.status)}">${esc(c.status)}</span> ${esc(c.error || '')}`],
+        ['Duration', fmtDur(c.duration_secs)],
+        ['Language', esc(c.language)],
+        ['Context', esc(JSON.stringify(c.params || {}))],
+        ['Cost', c.cost_inr == null ? '—' : `₹${c.cost_inr.toFixed(3)} (tts ₹${(cost.tts_inr||0).toFixed(3)} · stt ₹${(cost.stt_inr||0).toFixed(3)} · llm ₹${(cost.llm_inr||0).toFixed(3)}) · ₹${cost.inr_per_min ?? '—'}/min · ${cost.tts_chars ?? 0} chars · ${cost.llm_in ?? 0}/${cost.llm_out ?? 0} tok`],
+        ['Latency p50', c.latency_p50 == null ? '—' : c.latency_p50.toFixed(2) + ' s'],
+      ];
+      $('#details').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+      if (c.analysis) {
+        $('#analysis').innerHTML = Object.entries(c.analysis).map(([k, v]) =>
+          `<dt>${esc(k)}</dt><dd>${k === 'sentiment' ? `<span class="pill ${esc(v)}">${esc(v)}</span>` : esc(show(v))}</dd>`).join('');
+      }
+      $('#live').hidden = c.status !== 'live';
+      $('#transcript').innerHTML = c.turns.length
+        ? c.turns.map(t => `<div class="turn ${esc(t.role)}"><span class="who">${t.role === 'bot' ? 'Genie' : 'User'}</span>${esc(t.text)}</div>`).join('')
+        : '<div class="hint">No transcript yet.</div>';
+      if (c.transport === 'exotel' && c.status !== 'live' && !recording.done) loadRecording();
+      if (c.status === 'live' || !c.analysis) setTimeout(load, 2500);
+    }
+
+    // The recording lives on Exotel; /api/calls/{id}/recording streams it through.
+    // Exotel needs ~a minute after the call to publish it.
+    const recording = { done: false, tries: 0 };
+    async function loadRecording() {
+      recording.done = true;
+      $('#rec-section').hidden = false;
+      const r = await fetch(`/api/calls/${id}/recording`);
+      if (r.ok) {
+        $('#rec').src = URL.createObjectURL(await r.blob()); $('#rec-note').textContent = 'From Exotel (not stored here).'; return;
+      }
+      const msg = (await r.json().catch(() => ({}))).detail || r.statusText;
+      if (r.status === 404 && /not ready/.test(msg) && recording.tries++ < 6) {
+        $('#rec-note').textContent = 'Recording not ready yet on Exotel — checking again in 20 s…';
+        recording.done = false; setTimeout(loadRecording, 20000); return;
+      }
+      $('#rec').hidden = true; $('#rec-note').textContent = msg;
+    }
+    load();
+  </script>
+</body>
+</html>

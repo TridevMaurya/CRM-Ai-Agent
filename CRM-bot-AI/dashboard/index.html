@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Genie Calls</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Sans+Devanagari:wght@400;500;600&family=IBM+Plex+Mono&display=swap">
+  <link rel="stylesheet" href="/static/style.css?v=a356ec9d">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <button class="menu-btn" id="menu-btn" aria-label="Menu" title="Menu">☰</button>
+    <div class="brand"><b>Gyan TV</b>&nbsp; Genie</div>
+    <span id="live-count" class="pill live" hidden></span>
+    <div class="spacer"></div>
+    <span class="note" id="top-note"></span>
+  </header>
+  <div class="frame">
+    <div class="scrim" id="scrim"></div>
+    <nav class="sidenav" id="sidenav">
+      <div class="group">Research</div>
+      <a href="#calls" data-view="calls" class="active"><span class="ic">☎</span>Calls</a>
+      <a href="#dialer" data-view="dialer"><span class="ic">▶</span>Dialer</a>
+      <a href="#agents" data-view="agents"><span class="ic">✦</span>Agents</a>
+      <div class="group">System</div>
+      <a href="/admin"><span class="ic">⚙</span>Settings</a>
+    </nav>
+    <div class="page">
+      <!-- ================= CALLS ================= -->
+      <div id="view-calls">
+        <h1>Calls</h1>
+        <div class="tabs" id="agent-tabs"></div>
+
+        <div class="with-filters">
+          <aside class="filters">
+            <div class="eyebrow">Filters</div>
+            <div class="filter">
+              <div class="name">Timeframe</div>
+              <select id="f-range">
+                <option value="today">Today</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="all" selected>All time</option>
+              </select>
+            </div>
+            <div class="filter">
+              <div class="name">Outcome</div>
+              <div class="opts" id="f-outcome"></div>
+            </div>
+            <div class="filter">
+              <div class="name">Cohort</div>
+              <div class="opts" id="f-cohort"></div>
+            </div>
+            <div class="filter">
+              <div class="name">Theme <span class="hint">what they watch</span></div>
+              <div class="opts" id="f-theme"></div>
+            </div>
+          </aside>
+
+          <div>
+            <div class="card">
+              <div class="tiles" id="tiles"></div>
+              <div class="tops" id="tops"></div>
+            </div>
+
+            <div class="section-head">
+              <h2 id="table-title">Calls</h2>
+              <div class="spacer"></div>
+              <span class="hint" id="table-meta"></span>
+              <a id="export-link" href="#"><button class="small tertiary">Export to Excel ↓</button></a>
+            </div>
+            <div class="card"><div class="tbl" id="calls-table"></div></div>
+            <div class="row" id="pager" style="justify-content:flex-end;margin-top:0.8rem"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= DIALER ================= -->
+      <div id="view-dialer" hidden>
+        <h1>Dialer</h1>
+        <div class="card" style="margin-top:1.2rem;padding:1.1rem 1.4rem">
+          <div class="row">
+            <span id="c-status" class="status"><span class="dot"></span><span>Loading…</span></span>
+            <div style="flex:1"></div>
+            <label style="flex-direction:row;align-items:center;gap:0.5rem;flex:0 0 auto">Auto-pause after <input id="c-budget" type="number" min="1" placeholder="∞" style="width:84px"> dials</label>
+            <button id="c-toggle" class="primary">Start dialer</button>
+            <button id="c-sync">Sync sheets</button>
+          </div>
+          <div class="hint" id="c-info" style="margin-top:0.6rem"></div>
+        </div>
+        <div class="section-head"><h2>Queue by cohort</h2><div class="spacer"></div><span class="hint">in dialing priority order</span></div>
+        <div class="cohorts" id="c-queue"></div>
+        <div class="section-head"><h2>Contacts</h2><div class="spacer"></div><span class="hint">latest 100</span></div>
+        <div class="card"><div class="tbl"><table>
+          <thead><tr><th>Phone</th><th>Cohort</th><th>Lang</th><th>Video</th><th>Status</th><th>Tries</th><th>Note</th><th></th></tr></thead>
+          <tbody id="c-contacts"></tbody></table></div></div>
+        <div class="section-head"><h2>Call one number</h2></div>
+        <div class="card" style="padding:1.1rem 1.4rem">
+          <div class="row">
+            <label>Agent <select id="d-agent"></select></label>
+            <label>Phone <input id="d-number" placeholder="98xxxxxxxx"></label>
+            <label>Language <select id="d-lang"><option value="">agent default</option><option value="hin">Hindi</option><option value="tel">Telugu</option><option value="tam">Tamil</option><option value="kan">Kannada</option><option value="mal">Malayalam</option><option value="mar">Marathi</option><option value="eng">English</option></select></label>
+            <label>Name <input id="d-user_name" placeholder="optional"></label>
+            <label>Video title <input id="d-video_title" placeholder="what they watched"></label>
+          </div>
+          <div class="row" style="margin-top:0.8rem">
+            <button id="d-dial" class="primary">Dial via Exotel</button>
+            <button id="d-save">Save context only</button>
+            <span id="d-out" class="hint" style="margin:0"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= AGENTS ================= -->
+      <div id="view-agents" hidden>
+        <h1>Agents</h1>
+        <p class="hint" style="margin:0.4rem 0 1.2rem">Voice, prompts, fillers and timing are edited in <a href="/admin">Settings</a>. Changes apply from the next call.</p>
+        <div class="agent-grid" id="agent-cards"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function toast(msg, isError = false) {
+    const el = $('#toast'); el.textContent = msg; el.classList.toggle('error', isError);
+    el.classList.add('show'); clearTimeout(toast._t); toast._t = setTimeout(() => el.classList.remove('show'), 3000);
+  }
+  async function api(method, url, body) {
+    const r = await fetch(url, { method, headers: body ? {'Content-Type': 'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || r.statusText);
+    return data;
+  }
+  const fmtWhen = (t) => new Date(t * 1000).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const fmtDur = (s) => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+  const inr = (v) => v == null ? '—' : '₹' + Number(v).toFixed(v >= 100 ? 0 : 2);
+  const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
+
+  /* ---------- views ---------- */
+  function showView() {
+    const v = (location.hash || '#calls').slice(1);
+    for (const name of ['calls', 'dialer', 'agents']) $('#view-' + name).hidden = name !== v;
+    document.querySelectorAll('[data-view]').forEach(a => a.classList.toggle('active', a.dataset.view === v));
+  }
+  window.addEventListener('hashchange', () => { showView(); document.body.classList.remove('nav-open'); }); showView();
+  $('#menu-btn').onclick = () => document.body.classList.toggle('nav-open');
+  $('#scrim').onclick = () => document.body.classList.remove('nav-open');
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.body.classList.remove('nav-open'); });
+
+  /* ---------- calls ---------- */
+  const AGENT_LABEL = { 'genie-cancellation': 'Cancellation research', 'genie-content-feedback': 'Content research' };
+  const AGENT_ICON = { 'genie-cancellation': '⊘', 'genie-content-feedback': '▶' };
+  const COHORT_NAME = { SUB_CANCELLED: 'Subscription cancelled', TRIAL_CANCELLED: 'Trial cancelled', DAU_10PLUS: '10+ videos', LIGHT_3_4: '4–9 videos' };
+  const OUTCOMES = [['positive', 'Positive', 'gave usable feedback'], ['neutral', 'Neutral', 'nothing useful'], ['negative', 'Negative', 'refund / angry'], ['none', 'Pending', 'not analysed yet']];
+  const st = { agent: null, outcome: 'positive', cohort: '', theme: '', range: 'all', page: 1, sort: 'started_at', dir: -1, rows: [] };
+  const PAGE = 100;
+
+  async function loadCalls() {
+    const summary = await api('GET', '/api/calls/summary');
+    const agents = [...new Set(summary.counts.map(c => c.agent_id))].sort();
+    if (!st.agent || !agents.includes(st.agent)) st.agent = agents[0] || null;
+    $('#agent-tabs').innerHTML = agents.map(a => `<button class="${a === st.agent ? 'active' : ''}" data-agent="${esc(a)}">${AGENT_ICON[a] || '•'} ${esc(AGENT_LABEL[a] || a)} <span class="n">${summary.counts.filter(c => c.agent_id === a).reduce((s, c) => s + c.n, 0)}</span></button>`).join('')
+      || '<span class="hint">No calls yet.</span>';
+    document.querySelectorAll('[data-agent]').forEach(b => b.onclick = () => { st.agent = b.dataset.agent; st.page = 1; st.cohort = ''; st.theme = ''; loadCalls(); });
+    if (!st.agent) return;
+
+    const base = `agent_id=${encodeURIComponent(st.agent)}&range=${st.range}` + (st.cohort ? `&cohort=${st.cohort}` : '') + (st.theme ? `&theme=${encodeURIComponent(st.theme)}` : '');
+    const ins = await api('GET', `/api/calls/insights?${base}`);
+
+    // filters
+    $('#f-outcome').innerHTML = OUTCOMES.map(([k, label, hint]) => `<button class="opt ${st.outcome === k ? 'active' : ''}" data-outcome="${k}" title="${hint}"><span class="dot ${k}"></span>${label}<span class="n">${ins.buckets[k]}</span></button>`).join('');
+    document.querySelectorAll('[data-outcome]').forEach(b => b.onclick = () => { st.outcome = b.dataset.outcome; st.page = 1; loadCalls(); });
+    const cohorts = st.agent === 'genie-cancellation' ? ['TRIAL_CANCELLED', 'SUB_CANCELLED'] : ['DAU_10PLUS', 'LIGHT_3_4'];
+    $('#f-cohort').innerHTML = [['', 'All'], ...cohorts.map(c => [c, COHORT_NAME[c]])].map(([k, label]) => `<button class="opt ${st.cohort === k ? 'active' : ''}" data-cohort="${k}">${label}</button>`).join('');
+    document.querySelectorAll('[data-cohort]').forEach(b => b.onclick = () => { st.cohort = b.dataset.cohort; st.page = 1; loadCalls(); });
+    const themes = (ins.themes || []).slice(0, 14);
+    if (st.theme && !themes.some(t => t[0] === st.theme)) themes.push([st.theme, 0, 0]);
+    $('#f-theme').innerHTML = [['', 'All', ins.n]].concat(themes.map(([t, n]) => [t, t, n])).map(([k, label, n]) => `<button class="opt ${st.theme === k ? 'active' : ''}" data-theme="${esc(k)}">${esc(label)}<span class="n">${n}</span></button>`).join('');
+    document.querySelectorAll('[data-theme]').forEach(b => b.onclick = () => { st.theme = b.dataset.theme; st.page = 1; loadCalls(); });
+
+    // tiles
+    const tiles = [['positive', 'Positive', ins.buckets.positive, `${pct(ins.buckets.positive, ins.n)} of ${ins.n} calls`],
+                   ['neutral', 'Neutral', ins.buckets.neutral, 'silent, busy, hung up'],
+                   ['negative', 'Negative', ins.buckets.negative, 'refund, angry, do-not-call'],
+                   ['all', 'Connected', ins.n, `${ins.talked_1min} talked over a minute · avg ${fmtDur(ins.avg_secs)} · ${inr(ins.cost)}`]];
+    $('#tiles').innerHTML = tiles.map(([k, t, v, s]) => `<button class="tile ${st.outcome === k ? 'active' : ''}" data-tile="${k}"><div class="t">${k !== 'all' ? `<span class="dot ${k}" style="width:10px;height:10px;border-radius:50%;display:inline-block"></span>` : ''}${t}</div><div class="v">${v}</div><div class="s">${s}</div></button>`).join('');
+    document.querySelectorAll('[data-tile]').forEach(b => b.onclick = () => { st.outcome = b.dataset.tile === 'all' ? st.outcome : b.dataset.tile; st.page = 1; loadCalls(); });
+
+    // top lists
+    const list = (items, tone) => items.length ? items.map(([lab, n]) => `<div class="item"><span class="lab" title="${esc(lab)}">${esc(lab)}</span><span class="val">${n}</span></div>`).join('') : '<div class="none">Nothing yet</div>';
+    const isCancel = st.agent === 'genie-cancellation';
+    const themeList = (ins.themes || []).length ? ins.themes.slice(0, 6).map(([t, n, pos]) => `<div class="item"><span class="lab" title="${esc(t)}">${esc(t)}</span><span class="val" title="positive / calls">${pos}<span class="of">/${n}</span></span></div>`).join('') : '<div class="none">Nothing yet</div>';
+    $('#tops').innerHTML = `
+      <div class="top theme"><div class="h"><b>Themes ›</b><span>Positive / calls</span></div>${themeList}</div>
+      <div class="top"><div class="h"><b>${isCancel ? 'Why they left' : 'Other apps they use'} ›</b><span>Calls</span></div>${list(isCancel ? ins.reasons : ins.apps)}</div>
+      <div class="top warn"><div class="h"><b>Want more of ›</b><span>Mentions</span></div>${list(ins.wants)}</div>
+      <div class="top bad"><div class="h"><b>${isCancel ? 'Price they’d pay' : 'Missing content'} ›</b><span>${isCancel ? 'Calls' : 'Mentions'}</span></div>${list(isCancel ? ins.prices : ins.missing)}</div>`;
+
+    // table
+    const n = st.outcome === 'all' ? ins.n : ins.buckets[st.outcome];
+    const pages = Math.max(1, Math.ceil(n / PAGE));
+    if (st.page > pages) st.page = pages;
+    const q = `${base}&sentiment=${st.outcome}`;
+    $('#export-link').href = `/api/calls/export.xlsx?${q}`;
+    $('#table-title').textContent = `${OUTCOMES.find(o => o[0] === st.outcome)?.[1] || 'All'} calls`;
+    $('#table-meta').textContent = n ? `${n} calls · page ${st.page} of ${pages}` : '';
+    st.rows = n ? await api('GET', `/api/calls?${q}&limit=${PAGE}&page=${st.page}`) : [];
+    renderTable();
+    $('#pager').innerHTML = pages > 1 ? `<button class="small" id="pg-prev" ${st.page <= 1 ? 'disabled' : ''}>‹ Prev</button><button class="small" id="pg-next" ${st.page >= pages ? 'disabled' : ''}>Next ›</button>` : '';
+    if ($('#pg-prev')) $('#pg-prev').onclick = () => { st.page--; loadCalls(); };
+    if ($('#pg-next')) $('#pg-next').onclick = () => { st.page++; loadCalls(); };
+  }
+
+  const COLS = [['started_at', 'When'], ['from_number', 'Number'], ['cohort', 'Cohort'], ['theme', 'Theme'], ['video_title', 'Video'], ['duration_secs', 'Duration'], ['summary', 'What they said'], ['', '']];
+  function renderTable() {
+    const rows = [...st.rows].sort((a, b) => {
+      const ga = (c) => st.sort === 'cohort' ? (c.params || {}).cohort || '' : st.sort === 'theme' ? (c.params || {}).theme || '' : st.sort === 'video_title' ? (c.params || {}).video_title || '' : st.sort === 'summary' ? (c.analysis || {}).summary || '' : c[st.sort] ?? '';
+      const x = ga(a), y = ga(b); return (x > y ? 1 : x < y ? -1 : 0) * st.dir;
+    });
+    $('#calls-table').innerHTML = rows.length ? `<table>
+      <thead><tr>${COLS.map(([k, l]) => `<th data-sort="${k}" class="${st.sort === k ? 'sorted' : ''}">${l}${st.sort === k ? (st.dir > 0 ? ' ▴' : ' ▾') : (k ? ' ⇅' : '')}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(callRow).join('')}</tbody></table>` : '<div class="empty">No calls here for this selection.</div>';
+    document.querySelectorAll('[data-sort]').forEach(th => th.onclick = () => { if (!th.dataset.sort) return; if (st.sort === th.dataset.sort) st.dir *= -1; else { st.sort = th.dataset.sort; st.dir = -1; } renderTable(); });
+  }
+  function callRow(c) {
+    const a = c.analysis || {}, p = c.params || {};
+    const tags = [];
+    if (a.primary_reason && a.primary_reason !== 'unclear') tags.push(`<span class="pill">${esc(a.primary_reason.replace('_', ' '))}</span>`);
+    if (a.willing_price) tags.push(`<span class="pill">${esc(a.willing_price)}</span>`);
+    if (String(a.refund_or_money_expectation) === 'true') tags.push('<span class="pill negative">refund / money</span>');
+    if (a.do_not_call === true) tags.push('<span class="pill negative">do not call</span>');
+    return `<tr>
+      <td><b>${fmtWhen(c.started_at)}</b><div class="sub">${c.status === 'live' ? '<span class="pill live">live</span>' : esc(c.error || c.status)}</div></td>
+      <td>${esc(c.from_number || c.transport)}</td>
+      <td class="sub">${esc(COHORT_NAME[p.cohort] || p.cohort || '')}</td>
+      <td>${p.theme ? `<span class="pill theme">${esc(p.theme)}</span>` : '<span class="sub">—</span>'}</td>
+      <td style="max-width:200px">${esc((p.video_title || '—').slice(0, 48))}</td>
+      <td>${fmtDur(c.duration_secs)}</td>
+      <td class="summary">${esc(a.summary || (c.status === 'live' ? 'In progress…' : 'No analysis'))}${tags.length ? `<div style="margin-top:0.35rem;display:flex;gap:0.3rem;flex-wrap:wrap">${tags.join('')}</div>` : ''}</td>
+      <td class="actions"><a href="/calls/${esc(c.id)}"><button class="small ghost">Transcript</button></a>${c.transport === 'exotel' && c.status !== 'live' ? `<a href="/calls/${esc(c.id)}#rec"><button class="small ghost">Recording</button></a>` : ''}</td>
+    </tr>`;
+  }
+  $('#f-range').onchange = () => { st.range = $('#f-range').value; st.page = 1; loadCalls(); };
+
+  /* ---------- dialer ---------- */
+  async function loadCampaign() {
+    const c = await api('GET', '/api/campaign');
+    const on = c.dialer_enabled, live = on && c.in_call_window;
+    $('#c-status').className = 'status ' + (live ? 'on' : on ? 'wait' : '');
+    $('#c-status').lastElementChild.textContent = !on ? 'Dialer paused'
+      : c.in_call_window ? `Dialing · ${c.in_call ?? 0} talking · ${(c.in_flight - (c.in_call ?? 0))} ringing · ${c.max_concurrent} channels` + (c.dial_budget != null ? ` · ${c.dial_budget} dials left` : '')
+      : `Waiting for calling hours (${c.call_window_ist} IST)`;
+    if ((c.dial_themes_first || []).length) $('#c-status').lastElementChild.textContent += ` · ${c.dial_themes_first.join('/')} first`;
+    if (c.dial_focus && Object.keys(c.dial_focus).length) $('#c-status').lastElementChild.textContent += ` · focus: ${Object.entries(c.dial_focus).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join('›') : v}`).join(', ')}`;
+    if (c.last_error) $('#c-status').lastElementChild.textContent = c.last_error;
+    if (c.night_from) $('#c-status').lastElementChild.textContent += ` · ${(c.dial_cohorts_day || []).map(k => COHORT_NAME[k] || k).join(', ')} by day, ${(c.dial_cohorts_night || []).map(k => COHORT_NAME[k] || k).join(' › ')} from ${c.night_from}`;
+    $('#top-note').textContent = !on ? 'Dialer paused' : `Dialing · ${c.in_flight}/${c.max_concurrent}` + (c.dial_budget != null ? ` · ${c.dial_budget} left` : '');
+    $('#c-toggle').textContent = on ? 'Pause dialer' : 'Start dialer';
+    $('#c-toggle').className = on ? 'danger' : 'primary';
+    $('#c-toggle').dataset.on = on ? '1' : '';
+    const by = {};
+    for (const r of c.queue) (by[r.cohort] ??= {})[r.status] = r.n;
+    const pri = Array.isArray(c.dial_cohorts) ? c.dial_cohorts : Object.keys(by);
+    const order = pri.concat(Object.keys(by).filter(k => !pri.includes(k)));
+    $('#c-queue').innerHTML = order.filter(k => by[k]).map((k, i) => {
+      const s = by[k], total = Object.values(s).reduce((a, b) => a + b, 0), done = s.done || 0, active = pri.includes(k);
+      return `<div class="card cohort" style="${active ? '' : 'opacity:0.55'}">
+        <div class="name">${active ? `<span class="muted">${i + 1}.</span> ` : ''}${esc(COHORT_NAME[k] || k)}${active ? '' : ' <span class="sub">(parked)</span>'}</div>
+        <div class="nums"><span>queued <b>${s.queued || 0}</b></span><span>done <b>${done}</b></span><span>no answer <b>${s.no_answer || 0}</b></span><span>live <b>${(s.dialing || 0) + (s.in_call || 0)}</b></span>${s.dnc ? `<span>do-not-call <b>${s.dnc}</b></span>` : ''}</div>
+        <div class="bar"><i style="width:${total ? Math.min(100, 100 * done / total) : 0}%"></i></div></div>`;
+    }).join('') || '<div class="hint">No contacts yet — sync the sheets.</div>';
+    const langs = Array.isArray(c.dial_languages) ? c.dial_languages.join(', ') : 'all';
+    $('#c-info').innerHTML = `Languages: <b>${esc(langs)}</b> · ${c.content_items} videos in the catalogue · last sheet sync ${c.last_sync_at ? fmtWhen(c.last_sync_at) : 'never'}` + (c.last_error ? ` · <span class="err">${esc(c.last_error)}</span>` : '');
+  }
+  async function loadContacts() {
+    const list = await api('GET', '/api/contacts?limit=100');
+    $('#c-contacts').innerHTML = list.map(ct => `<tr>
+        <td>${esc(ct.phone)}</td><td class="sub">${esc(COHORT_NAME[ct.cohort] || ct.cohort)}</td><td>${esc(ct.params.language || '')}</td>
+        <td style="max-width:220px">${esc((ct.params.video_title || '—').slice(0, 40))}</td>
+        <td><span class="pill ${esc(ct.status)}">${esc(ct.status.replace('_', ' '))}</span></td>
+        <td>${ct.attempts}</td><td class="sub">${ct.call_id ? `<a href="/calls/${esc(ct.call_id)}">call</a> ` : ''}${esc(ct.note)}</td>
+        <td class="actions">${['queued', 'no_answer', 'failed', 'done'].includes(ct.status) ? `<button class="small" data-dial="${ct.id}">Call now</button>` : ''}</td>
+      </tr>`).join('') || '<tr><td colspan="8" class="empty">No contacts.</td></tr>';
+    document.querySelectorAll('[data-dial]').forEach(b => b.onclick = async () => {
+      try { await api('POST', `/api/contacts/${b.dataset.dial}/dial`); toast('Dialing…'); loadContacts(); } catch (e) { toast(e.message, true); }
+    });
+  }
+  $('#c-toggle').onclick = async () => {
+    try { const on = !$('#c-toggle').dataset.on, b = parseInt($('#c-budget').value, 10);
+      await api('POST', '/api/campaign/dialer', { enabled: on, budget: on && b > 0 ? b : null }); loadCampaign();
+    } catch (e) { toast(e.message, true); }
+  };
+  $('#c-sync').onclick = async () => {
+    $('#c-sync').disabled = true;
+    try { const r = await api('POST', '/api/campaign/sync'); toast(r.error ? 'Sync failed: ' + r.error : 'Sheets synced', !!r.error); } catch (e) { toast(e.message, true); }
+    $('#c-sync').disabled = false; loadCampaign(); loadContacts();
+  };
+
+  /* ---------- agents ---------- */
+  async function loadAgents() {
+    const agents = await api('GET', '/api/agents');
+    $('#agent-cards').innerHTML = agents.map(a => `
+      <div class="card agent">
+        <div class="name">${esc(a.name)}</div>
+        <div class="hint" style="margin:0">${esc(a.description)}</div>
+        <div class="facts"><span>voice <b>${esc(a.voice)}</b></span><span>calls <b>${a.stats.n}</b></span><span>avg <b>${fmtDur(a.stats.avg_secs)}</b></span><span>spent <b>${inr(a.stats.cost || 0)}</b></span><span>cohorts <b>${esc((a.cohorts || []).map(c => COHORT_NAME[c] || c).join(', ') || '—')}</b></span></div>
+        <div class="ws"><code title="${esc(a.ws_url)}">${esc(a.ws_url)}</code><button class="small" data-copy="${esc(a.ws_url)}">Copy</button></div>
+        <div class="row"><a href="${a.test_url}"><button class="small">🎤 Test in browser</button></a><span class="hint" style="margin:0">${a.dial_ready ? '☎ Exotel ready' : 'Exotel not configured'}</span></div>
+      </div>`).join('');
+    document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast('Copied')));
+    $('#d-agent').innerHTML = agents.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+  }
+
+  /* ---------- manual call ---------- */
+  function dialBody() {
+    const params = {};
+    for (const k of ['user_name', 'video_title']) { const v = $('#d-' + k).value.trim(); if (v) params[k] = v; }
+    if ($('#d-lang').value) params.language = $('#d-lang').value;
+    return { agent_id: $('#d-agent').value, number: $('#d-number').value.trim(), params };
+  }
+  $('#d-save').onclick = async () => { try { const r = await api('POST', '/api/context', dialBody()); $('#d-out').textContent = r.default_for ? `Default context saved for ${r.default_for}` : `Context saved for ${r.number}`; } catch (e) { $('#d-out').innerHTML = `<span class="err">${esc(e.message)}</span>`; } };
+  $('#d-dial').onclick = async () => { try { const r = await api('POST', '/api/dial', dialBody()); $('#d-out').textContent = `Dialing… Exotel call ${r.call_sid}`; } catch (e) { $('#d-out').innerHTML = `<span class="err">${esc(e.message)}</span>`; } };
+
+  async function liveCount() {
+    const live = (await api('GET', '/api/calls?limit=30')).filter(c => c.status === 'live').length;
+    $('#live-count').hidden = !live; $('#live-count').textContent = `${live} live`;
+  }
+  loadCalls().catch(e => toast(e.message, true));
+  loadCampaign().catch(e => toast(e.message, true));
+  loadAgents().catch(e => toast(e.message, true));
+  loadContacts().catch(() => {});
+  liveCount().catch(() => {});
+  setInterval(() => { loadCalls().catch(() => {}); loadCampaign().catch(() => {}); liveCount().catch(() => {}); }, 20000);
+</script>
+</body>
+</html>
